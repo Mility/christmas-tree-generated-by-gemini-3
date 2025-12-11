@@ -419,8 +419,61 @@
             }
 
             update(dt, mode, focusTargetMesh) {
+                // 处理粒子出现特效
+                if (this.mesh.userData.appearEffect && this.mesh.userData.appearEffect.active) {
+                    const effect = this.mesh.userData.appearEffect;
+                    effect.progress += dt;
+
+                    if (effect.progress >= effect.duration) {
+                        // 特效完成
+                        this.mesh.userData.appearEffect.active = false;
+                        this.mesh.scale.setScalar(effect.originalScale);
+                        this.mesh.material.opacity = effect.originalOpacity;
+                        if (this.mesh.material.emissive) {
+                            this.mesh.material.emissive.copy(effect.originalEmissive);
+                        }
+                    } else {
+                        // 特效进行中
+                        const t = effect.progress / effect.duration; // 0到1的进度
+                        const easeT = 1 - Math.pow(1 - t, 3); // 缓动函数
+
+                        // 位置插值 - 从起始位置飞到目标位置
+                        this.mesh.position.lerpVectors(effect.startPosition, effect.targetPosition, easeT);
+
+                        // 跟随圣诞树旋转 - 让粒子随着旋转一起出现
+                        const treeRotation = mainGroup.rotation.y;
+                        const radius = Math.sqrt(effect.targetPosition.x * effect.targetPosition.x + effect.targetPosition.z * effect.targetPosition.z);
+                        const angle = Math.atan2(effect.targetPosition.z, effect.targetPosition.x) + treeRotation * 0.5;
+                        const followX = Math.cos(angle) * radius;
+                        const followZ = Math.sin(angle) * radius;
+
+                        // 混合原始目标位置和跟随旋转的位置
+                        const followPos = new THREE.Vector3(followX, effect.targetPosition.y, followZ);
+                        this.mesh.position.lerp(followPos, Math.min(t * 2, 1)); // 逐渐跟随旋转
+
+                        // 缩放动画 - 从小到大
+                        const currentScale = effect.originalScale * (0.1 + easeT * 0.9);
+                        this.mesh.scale.setScalar(currentScale);
+
+                        // 透明度动画 - 淡入
+                        if (this.mesh.material) {
+                            this.mesh.material.opacity = effect.originalOpacity * easeT;
+                        }
+
+                        // 发光效果 - 闪烁金光
+                        if (this.mesh.material.emissive) {
+                            const glowIntensity = Math.sin(t * Math.PI * 4) * 0.5 + 0.5; // 闪烁
+                            const glowColor = new THREE.Color(0xffd700); // 金色
+                            this.mesh.material.emissive.copy(glowColor).multiplyScalar(glowIntensity * (1 - t)); // 逐渐减弱
+                        }
+
+                        // 提前返回，不执行正常的粒子逻辑
+                        return;
+                    }
+                }
+
                 let target = this.posTree;
-                
+
                 if (mode === 'SCATTER') target = this.posScatter;
                 else if (mode === 'FOCUS') {
                     if (this.mesh === focusTargetMesh) {
@@ -433,7 +486,7 @@
                 }
 
                 // Movement Easing
-                const lerpSpeed = (mode === 'FOCUS' && this.mesh === focusTargetMesh) ? 5.0 : 2.0; 
+                const lerpSpeed = (mode === 'FOCUS' && this.mesh === focusTargetMesh) ? 5.0 : 2.0;
                 this.mesh.position.lerp(target, lerpSpeed * dt);
 
                 // Rotation Logic - CRITICAL: Ensure spin happens in Scatter
@@ -445,26 +498,26 @@
                     // Reset rotations slowly
                     this.mesh.rotation.x = THREE.MathUtils.lerp(this.mesh.rotation.x, 0, dt);
                     this.mesh.rotation.z = THREE.MathUtils.lerp(this.mesh.rotation.z, 0, dt);
-                    this.mesh.rotation.y += 0.5 * dt; 
+                    this.mesh.rotation.y += 0.5 * dt;
                 }
-                
+
                 if (mode === 'FOCUS' && this.mesh === focusTargetMesh) {
-                    this.mesh.lookAt(camera.position); 
+                    this.mesh.lookAt(camera.position);
                 }
 
                 // Scale Logic
                 let s = this.baseScale;
                 if (this.isDust) {
                     s = this.baseScale * (0.8 + 0.4 * Math.sin(clock.elapsedTime * 4 + this.mesh.id));
-                    if (mode === 'TREE') s = 0; 
+                    if (mode === 'TREE') s = 0;
                 } else if (mode === 'SCATTER' && this.type === 'PHOTO') {
                     // Large preview size in scatter
-                    s = this.baseScale * 2.5; 
+                    s = this.baseScale * 2.5;
                 } else if (mode === 'FOCUS') {
-                    if (this.mesh === focusTargetMesh) s = 4.5; 
-                    else s = this.baseScale * 0.8; 
+                    if (this.mesh === focusTargetMesh) s = 4.5;
+                    else s = this.baseScale * 0.8;
                 }
-                
+
                 this.mesh.scale.lerp(new THREE.Vector3(s,s,s), 4*dt);
             }
         }
@@ -595,28 +648,59 @@
                 let mesh, type;
 
                 if (rand < 0.40) {
-                    mesh = new THREE.Mesh(boxGeo, greenMat);
+                    mesh = new THREE.Mesh(boxGeo, greenMat.clone());
                     type = 'BOX';
                 } else if (rand < 0.70) {
-                    mesh = new THREE.Mesh(boxGeo, goldMat);
+                    mesh = new THREE.Mesh(boxGeo, goldMat.clone());
                     type = 'GOLD_BOX';
                 } else if (rand < 0.92) {
-                    mesh = new THREE.Mesh(sphereGeo, goldMat);
+                    mesh = new THREE.Mesh(sphereGeo, goldMat.clone());
                     type = 'GOLD_SPHERE';
                 } else if (rand < 0.97) {
-                    mesh = new THREE.Mesh(sphereGeo, redMat);
+                    mesh = new THREE.Mesh(sphereGeo, redMat.clone());
                     type = 'RED';
                 } else {
-                    mesh = new THREE.Mesh(candyGeo, candyMat);
+                    mesh = new THREE.Mesh(candyGeo, candyMat.clone());
                     type = 'CANE';
                 }
 
                 const s = 0.4 + Math.random() * 0.5;
-                mesh.scale.set(s,s,s);
-                mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
+
+                // --- 粒子出现特效 ---
+                // 1. 保持正常大小（与上一版本一致）
+                mesh.scale.set(s, s, s); // 直接设置为正常大小
+
+                // 2. 淡入效果
+                if (mesh.material) {
+                    mesh.material.transparent = true;
+                    mesh.material.opacity = 0; // 初始透明
+                }
+
+                // 3. 从树底飞入效果
+                const treeBase = new THREE.Vector3(0, -CONFIG.particles.treeHeight/2 - 5, 0);
+                mesh.position.copy(treeBase); // 从树底部开始
+
+                // 4. 添加闪烁发光效果
+                const originalEmissive = mesh.material.emissive ? mesh.material.emissive.clone() : new THREE.Color(0x000000);
+                mesh.userData = {
+                    appearEffect: {
+                        active: true,
+                        progress: 0,
+                        duration: 1.5 + Math.random() * 1.0, // 1.5-2.5秒的出现时间
+                        originalScale: s,
+                        originalOpacity: 1.0,
+                        originalEmissive: originalEmissive,
+                        startPosition: treeBase.clone(),
+                        targetPosition: new THREE.Vector3() // 将在创建粒子后设置
+                    }
+                };
 
                 mainGroup.add(mesh);
-                particleSystem.push(new Particle(mesh, type, false));
+                const particle = new Particle(mesh, type, false);
+                particleSystem.push(particle);
+
+                // 设置目标位置（粒子的正常位置）
+                mesh.userData.appearEffect.targetPosition.copy(particle.posTree);
             }
 
             // 继续渐进式加载
