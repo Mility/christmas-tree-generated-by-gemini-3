@@ -766,7 +766,7 @@
         }
 
         function createParticleConnections() {
-            // 创建粒子间的连接线，形成网络效果
+            // 创建粒子间的连接线，形成网络效果 - 优化版本
             particleConnections.forEach(conn => scene.remove(conn));
             particleConnections = [];
 
@@ -774,15 +774,23 @@
             if (STATE.mode === 'SCATTER') {
                 const particles = particleSystem.filter(p => p.type !== 'DUST' && p.type !== 'PHOTO');
 
-                for(let i = 0; i < particles.length; i++) {
-                    for(let j = i + 1; j < particles.length; j++) {
-                        const p1 = particles[i];
+                // 限制处理的粒子数量，避免O(n²)性能问题
+                const maxParticles = Math.min(100, particles.length); // 最多处理100个粒子
+                const connectDistance = 12; // 增加连接距离以获得更好的视觉效果
+                const maxConnections = 200; // 限制最大连接数
+                let connectionCount = 0;
+
+                for(let i = 0; i < maxParticles && connectionCount < maxConnections; i++) {
+                    const p1 = particles[i];
+
+                    // 只检查附近的其他粒子，而不是所有粒子
+                    for(let j = i + 1; j < Math.min(i + 20, maxParticles) && connectionCount < maxConnections; j++) {
                         const p2 = particles[j];
 
                         const distance = p1.mesh.position.distanceTo(p2.mesh.position);
 
                         // 只连接距离较近的粒子
-                        if (distance < 8) {
+                        if (distance < connectDistance) {
                             const geometry = new THREE.BufferGeometry();
                             const positions = new Float32Array([
                                 p1.mesh.position.x, p1.mesh.position.y, p1.mesh.position.z,
@@ -794,13 +802,14 @@
                             const material = new THREE.LineBasicMaterial({
                                 color: 0x8888ff,
                                 transparent: true,
-                                opacity: (8 - distance) / 8 * 0.3,
+                                opacity: (connectDistance - distance) / connectDistance * 0.4,
                                 blending: THREE.AdditiveBlending
                             });
 
                             const line = new THREE.Line(geometry, material);
                             scene.add(line);
                             particleConnections.push(line);
+                            connectionCount++;
                         }
                     }
                 }
@@ -808,27 +817,28 @@
         }
 
         function createAurora() {
-            // 创建极光背景 - 使用多个波浪形几何体
-            for(let i = 0; i < 3; i++) {
-                const auroraGeo = new THREE.PlaneGeometry(300, 100, 50, 20);
+            // 创建极光背景 - 优化版本，使用更少的顶点和更高效的动画
+            for(let i = 0; i < 2; i++) { // 减少到2个极光层
+                const auroraGeo = new THREE.PlaneGeometry(250, 80, 20, 8); // 大幅减少顶点数
                 const auroraMat = new THREE.MeshBasicMaterial({
-                    color: new THREE.Color().setHSL(0.6 + i * 0.1, 0.8, 0.3),
+                    color: new THREE.Color().setHSL(0.6 + i * 0.15, 0.8, 0.25), // 降低透明度
                     transparent: true,
-                    opacity: 0.3,
+                    opacity: 0.2,
                     side: THREE.DoubleSide,
                     blending: THREE.AdditiveBlending
                 });
 
                 const aurora = new THREE.Mesh(auroraGeo, auroraMat);
-                aurora.position.set(0, 30 + i * 20, -100);
-                aurora.rotation.x = -Math.PI * 0.2;
+                aurora.position.set(0, 25 + i * 15, -120); // 移得更远减少视觉复杂度
+                aurora.rotation.x = -Math.PI * 0.15;
 
                 // 添加自定义属性用于动画
                 aurora.userData = {
                     baseY: aurora.position.y,
-                    waveSpeed: 0.5 + i * 0.2,
-                    waveAmplitude: 5 + i * 2,
-                    hue: 0.6 + i * 0.1
+                    waveSpeed: 0.3 + i * 0.1, // 降低动画速度
+                    waveAmplitude: 3 + i,
+                    hue: 0.6 + i * 0.15,
+                    lastUpdate: 0 // 用于降低更新频率
                 };
 
                 scene.add(aurora);
@@ -1213,26 +1223,31 @@
 
             // Update magic effects
             if (STATE.magicMode) {
-                // 极光动画
+                // 极光动画 - 降低更新频率
                 auroraSystem.forEach((aurora, i) => {
                     const time = clock.elapsedTime;
-                    aurora.position.y = aurora.userData.baseY + Math.sin(time * aurora.userData.waveSpeed + i) * aurora.userData.waveAmplitude;
 
-                    // 颜色变化
-                    aurora.material.color.setHSL(
-                        aurora.userData.hue + Math.sin(time * 0.5 + i) * 0.1,
-                        0.8,
-                        0.3 + Math.sin(time * 0.3 + i) * 0.1
-                    );
+                    // 只在每几帧更新一次顶点动画
+                    if (time - aurora.userData.lastUpdate > 0.1) { // 降低到每100ms更新一次
+                        aurora.position.y = aurora.userData.baseY + Math.sin(time * aurora.userData.waveSpeed + i) * aurora.userData.waveAmplitude;
 
-                    // 顶点动画
-                    const positions = aurora.geometry.attributes.position.array;
-                    for (let j = 0; j < positions.length; j += 3) {
-                        const x = positions[j];
-                        const wave = Math.sin(time * 2 + x * 0.01 + i) * 2;
-                        positions[j + 1] = wave;
+                        // 简化顶点动画 - 只更新部分顶点
+                        const positions = aurora.geometry.attributes.position.array;
+                        for (let j = 0; j < positions.length; j += 9) { // 每9个顶点更新一次
+                            const x = positions[j];
+                            const wave = Math.sin(time * 1.5 + x * 0.005 + i) * 1.5;
+                            positions[j + 1] = wave;
+                        }
+                        aurora.geometry.attributes.position.needsUpdate = true;
+                        aurora.userData.lastUpdate = time;
                     }
-                    aurora.geometry.attributes.position.needsUpdate = true;
+
+                    // 颜色变化 - 降低频率
+                    aurora.material.color.setHSL(
+                        aurora.userData.hue + Math.sin(time * 0.3 + i) * 0.05, // 降低变化幅度
+                        0.8,
+                        0.25 + Math.sin(time * 0.2 + i) * 0.05
+                    );
                 });
 
                 // 流星动画
@@ -1296,7 +1311,7 @@
                     }
                 });
 
-                // 重力井动画和效果
+                // 重力井动画和效果 - 优化：减少计算频率
                 gravityWells.forEach((well, i) => {
                     well.userData.life -= dt;
                     const lifeRatio = well.userData.life / well.userData.maxLife;
@@ -1305,21 +1320,20 @@
                     well.material.opacity = lifeRatio * 0.3;
                     well.scale.setScalar(1 + (1 - lifeRatio) * 2);
 
-                    // 应用重力效果到粒子
-                    if (STATE.mode === 'SCATTER') {
-                        particleSystem.forEach(p => {
+                    // 应用重力效果到粒子 - 只对部分粒子计算
+                    if (STATE.mode === 'SCATTER' && Math.random() < 0.3) { // 只在30%的帧中计算
+                        const maxParticles = Math.min(50, particleSystem.length); // 限制计算粒子数量
+                        for(let j = 0; j < maxParticles; j++) {
+                            const p = particleSystem[j];
                             if (p.type !== 'DUST' && p.type !== 'PHOTO') {
-                                const particleWorldPos = p.mesh.position.clone();
-                                mainGroup.localToWorld(particleWorldPos);
+                                const distance = p.mesh.position.distanceTo(well.position);
 
-                                const distance = particleWorldPos.distanceTo(well.position);
-
-                                if (distance < 30) {
-                                    const force = well.position.clone().sub(particleWorldPos).normalize().multiplyScalar(well.userData.strength * lifeRatio / (distance + 1));
+                                if (distance < 25) { // 减少作用距离
+                                    const force = well.position.clone().sub(p.mesh.position).normalize().multiplyScalar(well.userData.strength * lifeRatio * 0.5 / (distance + 1));
                                     p.mesh.position.add(force.clone().multiplyScalar(dt));
                                 }
                             }
-                        });
+                        }
                     }
 
                     // 移除死亡的重力井
@@ -1329,26 +1343,27 @@
                     }
                 });
 
-                // 鼠标磁场效果
-                if (STATE.mode === 'SCATTER') {
-                    particleSystem.forEach(p => {
+                // 鼠标磁场效果 - 优化：减少计算频率和范围
+                if (STATE.mode === 'SCATTER' && Math.random() < 0.5) { // 只在50%的帧中计算
+                    const maxParticles = Math.min(30, particleSystem.length); // 限制计算粒子数量
+                    for(let j = 0; j < maxParticles; j++) {
+                        const p = particleSystem[j];
                         if (p.type !== 'DUST' && p.type !== 'PHOTO') {
-                            const particleWorldPos = p.mesh.position.clone();
-                            mainGroup.localToWorld(particleWorldPos);
+                            const mousePos = new THREE.Vector3(mouse.x * 40, mouse.y * 25, 0); // 减少范围
+                            const distance = p.mesh.position.distanceTo(mousePos);
 
-                            const mousePos = new THREE.Vector3(mouse.x * 50, mouse.y * 30, 0);
-                            const distance = particleWorldPos.distanceTo(mousePos);
-
-                            if (distance < 20) {
-                                const force = mousePos.clone().sub(particleWorldPos).normalize().multiplyScalar(50 / (distance + 1));
-                                p.mesh.position.add(force.clone().multiplyScalar(dt * 2));
+                            if (distance < 15) { // 减少作用距离
+                                const force = mousePos.clone().sub(p.mesh.position).normalize().multiplyScalar(30 / (distance + 1));
+                                p.mesh.position.add(force.clone().multiplyScalar(dt));
                             }
                         }
-                    });
+                    }
                 }
 
-                // 更新粒子连接网络
-                createParticleConnections();
+                // 更新粒子连接网络 - 优化：降低更新频率
+                if (Math.random() < 0.2) { // 只在20%的帧中更新
+                    createParticleConnections();
+                }
             }
 
             composer.render();
