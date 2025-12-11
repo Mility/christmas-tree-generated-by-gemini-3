@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src blob:; connect-src https://cdn.jsdelivr.net https://storage.googleapis.com;">
     <title>Grand Luxury Tree Final v2</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000000; font-family: 'Times New Roman', serif; }
@@ -225,6 +226,13 @@
         let caneTexture;
         let mouse = { x: 0, y: 0 };
 
+        // 性能和兼容性变量
+        let isWebGLAvailable = false;
+        let lastFrameTime = 0;
+        let targetFPS = 60;
+        let frameInterval = 1000 / targetFPS;
+        let animationId = null;
+
         // 魔法特效系统
         let auroraSystem = [];
         let meteorSystem = [];
@@ -236,6 +244,12 @@
         let particleConnections = [];
 
         async function init() {
+            // 检查WebGL支持
+            if (!checkWebGLSupport()) {
+                showError('您的浏览器不支持WebGL，请升级浏览器或启用硬件加速。');
+                return;
+            }
+
             updateProgress(0, "Initializing Three.js...");
             initThree();
 
@@ -283,6 +297,28 @@
             }, 1000);
 
             animate();
+        }
+
+        function checkWebGLSupport() {
+            try {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (!gl) return false;
+
+                // 检查基本WebGL功能
+                const requiredExtensions = ['OES_texture_float', 'OES_standard_derivatives'];
+                for (const ext of requiredExtensions) {
+                    if (!gl.getExtension(ext)) {
+                        console.warn(`WebGL extension ${ext} not supported`);
+                    }
+                }
+
+                isWebGLAvailable = true;
+                return true;
+            } catch (e) {
+                console.error('WebGL check failed:', e);
+                return false;
+            }
         }
 
         function updateProgress(percent, text) {
@@ -1109,16 +1145,153 @@
         function handleImageUpload(e) {
             const files = e.target.files;
             if(!files.length) return;
+
+            // 文件验证
+            const maxFileSize = 10 * 1024 * 1024; // 10MB限制
+            const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+
             Array.from(files).forEach(f => {
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    new THREE.TextureLoader().load(ev.target.result, (t) => {
-                        t.colorSpace = THREE.SRGBColorSpace;
-                        addPhotoToScene(t);
-                    });
+                // 检查文件类型
+                if (!allowedTypes.includes(f.type)) {
+                    showError(`不支持的文件类型: ${f.type}。请上传 JPG, PNG, GIF 或 WebP 图片。`);
+                    return;
                 }
-                reader.readAsDataURL(f);
+
+                // 检查文件大小
+                if (f.size > maxFileSize) {
+                    showError(`文件过大: ${(f.size / 1024 / 1024).toFixed(1)}MB。最大支持 10MB。`);
+                    return;
+                }
+
+                // 检查图片分辨率（防止过大图片）
+                const img = new Image();
+                img.onload = () => {
+                    const maxDimension = 4096;
+                    if (img.width > maxDimension || img.height > maxDimension) {
+                        showError(`图片分辨率过高 (${img.width}x${img.height})。最大支持 ${maxDimension}x${maxDimension}。`);
+                        return;
+                    }
+
+                    // 通过验证，开始处理
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        try {
+                            new THREE.TextureLoader().load(ev.target.result, (t) => {
+                                t.colorSpace = THREE.SRGBColorSpace;
+                                addPhotoToScene(t);
+                            }, undefined, (error) => {
+                                showError('图片加载失败，请重试。');
+                                console.error('Texture loading error:', error);
+                            });
+                        } catch (error) {
+                            showError('图片处理出错，请重试。');
+                            console.error('Image processing error:', error);
+                        }
+                    };
+                    reader.onerror = () => showError('文件读取失败。');
+                    reader.readAsDataURL(f);
+                };
+                img.onerror = () => showError('无法读取图片文件。');
+
+                // 创建对象URL用于预览
+                const objectUrl = URL.createObjectURL(f);
+                img.src = objectUrl;
+
+                // 清理对象URL（延迟清理避免影响加载）
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
             });
+        }
+
+        function showError(message) {
+            // 创建错误提示UI
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: rgba(255, 0, 0, 0.9);
+                color: white;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 14px;
+                z-index: 1001;
+                max-width: 300px;
+                word-wrap: break-word;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            `;
+            errorDiv.textContent = message;
+            document.body.appendChild(errorDiv);
+
+            // 3秒后自动消失
+            setTimeout(() => {
+                if (errorDiv.parentNode) {
+                    errorDiv.remove();
+                }
+            }, 3000);
+        }
+
+        function cleanup() {
+            // 停止动画循环
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+
+            // 停止MediaPipe
+            if (handLandmarker) {
+                handLandmarker.close();
+                handLandmarker = null;
+            }
+
+            // 停止摄像头流
+            if (video && video.srcObject) {
+                const stream = video.srcObject;
+                const tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+                video.srcObject = null;
+            }
+
+            // 清理Three.js资源
+            if (renderer) {
+                renderer.dispose();
+                renderer.forceContextLoss();
+            }
+
+            if (composer) {
+                composer.dispose();
+            }
+
+            // 清理几何体和材质
+            scene.traverse((object) => {
+                if (object.geometry) {
+                    object.geometry.dispose();
+                }
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(material => material.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+
+            // 清理纹理
+            if (caneTexture) {
+                caneTexture.dispose();
+            }
+
+            // 清空数组
+            particleSystem.length = 0;
+            snowSystem.length = 0;
+            auroraSystem.length = 0;
+            meteorSystem.length = 0;
+            magicBeams.length = 0;
+            gravityWells.length = 0;
+            energyRipples.length = 0;
+            fireworks.length = 0;
+            particleConnections.length = 0;
+
+            console.log('资源清理完成');
         }
 
         // --- MEDIAPIPE ---
@@ -1192,11 +1365,26 @@
         }
 
         function setupEvents() {
+            // 页面卸载时清理资源
+            window.addEventListener('beforeunload', cleanup);
+
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 composer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // 可访问性支持 - 键盘导航
+            window.addEventListener('keydown', (e) => {
+                // Tab键导航支持
+                if (e.key === 'Tab') {
+                    const uploadBtn = document.querySelector('.upload-btn');
+                    if (uploadBtn) {
+                        uploadBtn.focus();
+                        e.preventDefault();
+                    }
+                }
             });
 
             document.getElementById('file-input').addEventListener('change', handleImageUpload);
@@ -1268,9 +1456,16 @@
             });
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            const dt = clock.getDelta();
+        function animate(currentTime = 0) {
+            // 帧率限制 - 避免过度渲染
+            if (currentTime - lastFrameTime < frameInterval) {
+                requestAnimationFrame(animate);
+                return;
+            }
+            lastFrameTime = currentTime;
+
+            animationId = requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 1/30); // 限制最大dt避免大跳跃
 
             // Rotation Logic
             if (STATE.mode === 'SCATTER' && STATE.hand.detected) {
