@@ -187,10 +187,10 @@
                 rainbow: [0xff0000, 0xff7f00, 0xffff00, 0x00ff00, 0x0000ff, 0x4b0082, 0x9400d3]
             },
             particles: {
-                initialCount: 300,     // 初始粒子数量，减少首次加载时间
-                maxCount: 1500,        // 最大粒子数量
-                dustCount: 800,        // 减少尘埃粒子
-                snowCount: 100,        // 减少雪花粒子
+                initialCount: 150,     // 大幅减少初始粒子数量，提升加载速度
+                maxCount: 1200,        // 相应减少最大粒子数量
+                dustCount: 400,        // 大幅减少尘埃粒子
+                snowCount: 50,         // 大幅减少雪花粒子
                 treeHeight: 24,
                 treeRadius: 8
             },
@@ -471,13 +471,14 @@
 
         // --- CREATION ---
         function createParticles() {
-            const sphereGeo = new THREE.SphereGeometry(0.5, 32, 32);
+            // 大幅简化几何体以提升加载速度
+            const sphereGeo = new THREE.SphereGeometry(0.5, 16, 12); // 从32x32减少到16x12
             const boxGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55);
             const curve = new THREE.CatmullRomCurve3([
                 new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(0, 0.3, 0),
                 new THREE.Vector3(0.1, 0.5, 0), new THREE.Vector3(0.3, 0.4, 0)
             ]);
-            const candyGeo = new THREE.TubeGeometry(curve, 16, 0.08, 8, false);
+            const candyGeo = new THREE.TubeGeometry(curve, 8, 0.08, 6, false); // 减少管段和径向段
 
             const goldMat = new THREE.MeshStandardMaterial({
                 color: CONFIG.colors.champagneGold,
@@ -555,13 +556,14 @@
                 return;
             }
 
-            const sphereGeo = new THREE.SphereGeometry(0.5, 32, 32);
+            // 使用与初始粒子相同的简化几何体
+            const sphereGeo = new THREE.SphereGeometry(0.5, 16, 12);
             const boxGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55);
             const curve = new THREE.CatmullRomCurve3([
                 new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(0, 0.3, 0),
                 new THREE.Vector3(0.1, 0.5, 0), new THREE.Vector3(0.3, 0.4, 0)
             ]);
-            const candyGeo = new THREE.TubeGeometry(curve, 16, 0.08, 8, false);
+            const candyGeo = new THREE.TubeGeometry(curve, 8, 0.08, 6, false);
 
             const goldMat = new THREE.MeshStandardMaterial({
                 color: CONFIG.colors.champagneGold,
