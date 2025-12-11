@@ -131,7 +131,7 @@
                 Add Memories
                 <input type="file" id="file-input" multiple accept="image/*">
             </label>
-            <div class="hint-text">Press 'H' to Hide Controls</div>
+            <div class="hint-text">H:Hide | 1:Tree | 2:Scatter | 3:Focus | R:Rainbow | Click:Toggle | Mouse:Control</div>
         </div>
     </div>
 
@@ -153,19 +153,23 @@
         // --- CONFIGURATION ---
         const CONFIG = {
             colors: {
-                bg: 0x000000, 
-                champagneGold: 0xffd966, 
-                deepGreen: 0x03180a,     
-                accentRed: 0x990000,     
+                bg: 0x000000,
+                champagneGold: 0xffd966,
+                deepGreen: 0x03180a,
+                accentRed: 0x990000,
+                electricBlue: 0x00ffff,
+                neonPink: 0xff1493,
+                rainbow: [0xff0000, 0xff7f00, 0xffff00, 0x00ff00, 0x0000ff, 0x4b0082, 0x9400d3]
             },
             particles: {
-                count: 1500,     
-                dustCount: 2500, 
-                treeHeight: 24,  
-                treeRadius: 8    
+                count: 1500,
+                dustCount: 2500,
+                snowCount: 200,
+                treeHeight: 24,
+                treeRadius: 8
             },
             camera: {
-                z: 50 
+                z: 50
             }
         };
 
@@ -178,20 +182,23 @@
         };
 
         let scene, camera, renderer, composer;
-        let mainGroup; 
+        let mainGroup;
         let clock = new THREE.Clock();
-        let particleSystem = []; 
+        let particleSystem = [];
+        let snowSystem = [];
         let photoMeshGroup = new THREE.Group();
         let handLandmarker, video, webcamCanvas, webcamCtx;
-        let caneTexture; 
+        let caneTexture;
+        let mouse = { x: 0, y: 0 };
 
         async function init() {
             initThree();
             setupEnvironment(); 
             setupLights();
             createTextures();
-            createParticles(); 
-            createDust();     
+            createParticles();
+            createDust();
+            createSnow();
             createDefaultPhotos();
             setupPostProcessing();
             setupEvents();
@@ -457,7 +464,7 @@
         function createDust() {
             const geo = new THREE.TetrahedronGeometry(0.08, 0);
             const mat = new THREE.MeshBasicMaterial({ color: 0xffeebb, transparent: true, opacity: 0.8 });
-            
+
             for(let i=0; i<CONFIG.particles.dustCount; i++) {
                  const mesh = new THREE.Mesh(geo, mat);
                  mesh.scale.setScalar(0.5 + Math.random());
@@ -466,16 +473,83 @@
             }
         }
 
+        function createSnow() {
+            const snowGeo = new THREE.PlaneGeometry(0.1, 0.1);
+            const snowMat = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+
+            for(let i = 0; i < CONFIG.particles.snowCount; i++) {
+                const snow = new THREE.Mesh(snowGeo, snowMat);
+                snow.position.set(
+                    (Math.random() - 0.5) * 200,
+                    Math.random() * 100 + 20,
+                    (Math.random() - 0.5) * 200
+                );
+                snow.rotation.z = Math.random() * Math.PI * 2;
+
+                // Add custom properties for snow animation
+                snow.userData = {
+                    fallSpeed: 0.5 + Math.random() * 1.5,
+                    rotationSpeed: (Math.random() - 0.5) * 0.02,
+                    drift: (Math.random() - 0.5) * 0.5
+                };
+
+                scene.add(snow);
+                snowSystem.push(snow);
+            }
+        }
+
         function createDefaultPhotos() {
             const canvas = document.createElement('canvas');
             canvas.width = 512; canvas.height = 512;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#050505'; ctx.fillRect(0,0,512,512);
-            ctx.strokeStyle = '#eebb66'; ctx.lineWidth = 15; ctx.strokeRect(20,20,472,472);
-            ctx.font = '500 60px Times New Roman'; ctx.fillStyle = '#eebb66';
+
+            // 动态渐变背景
+            const gradient = ctx.createLinearGradient(0, 0, 512, 512);
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(0.5, '#16213e');
+            gradient.addColorStop(1, '#0f3460');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0,0,512,512);
+
+            // 金色边框
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(15,15,482,482);
+
+            // 内边框
+            ctx.strokeStyle = '#ffed4e';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(25,25,462,462);
+
+            // 动态文字效果
+            ctx.font = 'bold 48px "Cinzel", serif';
             ctx.textAlign = 'center';
-            ctx.fillText("MERRY", 256, 230);
-            ctx.fillText("CHRISTMAS", 256, 300);
+            ctx.textBaseline = 'middle';
+
+            // 添加文字阴影和发光
+            ctx.shadowColor = '#ffd700';
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText("MERRY", 256, 200);
+
+            ctx.fillStyle = '#ffd700';
+            ctx.shadowBlur = 15;
+            ctx.fillText("CHRISTMAS", 256, 280);
+
+            // 添加装饰性雪花
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '30px Arial';
+            ctx.fillText('❄', 100, 100);
+            ctx.fillText('❄', 400, 150);
+            ctx.fillText('❄', 80, 400);
+            ctx.fillText('❄', 420, 380);
+            ctx.fillText('⭐', 256, 450);
 
             const tex = new THREE.CanvasTexture(canvas);
             tex.colorSpace = THREE.SRGBColorSpace;
@@ -595,13 +669,55 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 composer.setSize(window.innerWidth, window.innerHeight);
             });
+
             document.getElementById('file-input').addEventListener('change', handleImageUpload);
-            
-            // Toggle UI logic - ONLY hide controls, keep title
+
+            // Mouse interaction for camera control
+            document.addEventListener('mousemove', (event) => {
+                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+                // Mouse camera control when not using hand gestures
+                if (!STATE.hand.detected && STATE.mode !== 'TREE') {
+                    const targetRotY = mouse.x * Math.PI * 0.3;
+                    const targetRotX = mouse.y * Math.PI * 0.15;
+                    STATE.rotation.y += (targetRotY - STATE.rotation.y) * 0.05;
+                    STATE.rotation.x += (targetRotX - STATE.rotation.x) * 0.05;
+                }
+            });
+
+            // Click to change modes
+            document.addEventListener('click', () => {
+                if (STATE.mode === 'TREE') {
+                    STATE.mode = 'SCATTER';
+                } else if (STATE.mode === 'SCATTER') {
+                    STATE.mode = 'TREE';
+                }
+            });
+
+            // Keyboard controls
             window.addEventListener('keydown', (e) => {
                 if (e.key.toLowerCase() === 'h') {
                     const controls = document.querySelector('.upload-wrapper');
                     if (controls) controls.classList.toggle('ui-hidden');
+                } else if (e.key === '1') {
+                    STATE.mode = 'TREE';
+                    STATE.focusTarget = null;
+                } else if (e.key === '2') {
+                    STATE.mode = 'SCATTER';
+                    STATE.focusTarget = null;
+                } else if (e.key === '3') {
+                    STATE.mode = 'FOCUS';
+                    const photos = particleSystem.filter(p => p.type === 'PHOTO');
+                    if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random()*photos.length)].mesh;
+                } else if (e.key === 'r') {
+                    // Rainbow mode - change all particle colors
+                    particleSystem.forEach(p => {
+                        if (p.type !== 'DUST' && p.type !== 'PHOTO') {
+                            const rainbowIndex = Math.floor(Math.random() * CONFIG.colors.rainbow.length);
+                            p.mesh.material.color.setHex(CONFIG.colors.rainbow[rainbowIndex]);
+                        }
+                    });
                 }
             });
         }
@@ -629,6 +745,22 @@
             mainGroup.rotation.x = STATE.rotation.x;
 
             particleSystem.forEach(p => p.update(dt, STATE.mode, STATE.focusTarget));
+
+            // Update snow particles
+            snowSystem.forEach(snow => {
+                snow.position.y -= snow.userData.fallSpeed * dt;
+                snow.position.x += snow.userData.drift * dt;
+                snow.rotation.z += snow.userData.rotationSpeed;
+
+                // Reset snow when it falls below screen
+                if (snow.position.y < -20) {
+                    snow.position.y = 120 + Math.random() * 20;
+                    snow.position.x = (Math.random() - 0.5) * 200;
+                    snow.position.z = (Math.random() - 0.5) * 200;
+                    snow.userData.drift = (Math.random() - 0.5) * 0.5;
+                }
+            });
+
             composer.render();
         }
 
