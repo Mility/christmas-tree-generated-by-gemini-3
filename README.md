@@ -71,6 +71,7 @@ Gemini3 生成的基于手势控制3D粒子圣诞树（原作者）
 1. 打开Settings->Pages -> Source,选择Github Actions 
 2. 点击https://mility.github.io/christmas-tree-generated-by-gemini-3/   访问
 ---
+<img width="1458" height="1334" alt="image" src="https://github.com/user-attachments/assets/71b6aa87-a54f-4441-8c9c-6bb52afe1556" />
 
 ## 📝 版权与致谢 
 * 首先致敬提供开源库的先驱前辈们，让小白也能为想象插上翅膀
