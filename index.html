@@ -244,10 +244,10 @@
         let particleConnections = [];
 
         async function init() {
-            // 检查WebGL支持
+            // 检查WebGL支持 - 不阻止继续运行，提供降级体验
             if (!checkWebGLSupport()) {
-                showError('您的浏览器不支持WebGL，请升级浏览器或启用硬件加速。');
-                return;
+                showError('WebGL不可用，将使用降级模式。某些视觉效果可能受限。');
+                // 不返回，继续运行但使用简化模式
             }
 
             updateProgress(0, "Initializing Three.js...");
