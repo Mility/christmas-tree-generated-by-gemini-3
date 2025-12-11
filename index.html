@@ -33,13 +33,34 @@
             transition: opacity 0.8s ease-out;
         }
         .loader-text {
-            color: #d4af37; font-size: 14px; letter-spacing: 4px; margin-top: 20px;
+            color: #d4af37; font-size: 14px; letter-spacing: 4px; margin-bottom: 30px;
             text-transform: uppercase; font-weight: 100;
         }
+        .progress-container {
+            width: 300px; height: 4px;
+            background: rgba(212, 175, 55, 0.2);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #d4af37, #ffd700);
+            border-radius: 2px;
+            width: 0%;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+        }
+        .progress-text {
+            color: #d4af37; font-size: 12px; letter-spacing: 2px;
+            text-transform: uppercase; font-weight: 100;
+            margin-top: 10px;
+        }
         .spinner {
-            width: 40px; height: 40px; border: 1px solid rgba(212, 175, 55, 0.2); 
-            border-top: 1px solid #d4af37; border-radius: 50%; 
+            width: 30px; height: 30px; border: 1px solid rgba(212, 175, 55, 0.2);
+            border-top: 1px solid #d4af37; border-radius: 50%;
             animation: spin 1s linear infinite;
+            opacity: 0.7;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
@@ -117,8 +138,12 @@
 <body>
 
     <div id="loader">
-        <div class="spinner"></div>
         <div class="loader-text">Loading Holiday Magic</div>
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div class="progress-text" id="progress-text">Initializing...</div>
+        <div class="spinner"></div>
     </div>
 
     <div id="canvas-container"></div>
@@ -162,23 +187,31 @@
                 rainbow: [0xff0000, 0xff7f00, 0xffff00, 0x00ff00, 0x0000ff, 0x4b0082, 0x9400d3]
             },
             particles: {
-                count: 1500,
-                dustCount: 2500,
-                snowCount: 200,
+                initialCount: 300,     // 初始粒子数量，减少首次加载时间
+                maxCount: 1500,        // 最大粒子数量
+                dustCount: 800,        // 减少尘埃粒子
+                snowCount: 100,        // 减少雪花粒子
                 treeHeight: 24,
                 treeRadius: 8
             },
             camera: {
                 z: 50
+            },
+            performance: {
+                particleIncrement: 100,  // 每次增加的粒子数量
+                incrementInterval: 2000, // 增加间隔(ms)
+                enableProgressive: true  // 启用渐进式加载
             }
         };
 
         const STATE = {
-            mode: 'TREE', 
-            focusIndex: -1, 
+            mode: 'TREE',
+            focusIndex: -1,
             focusTarget: null,
             hand: { detected: false, x: 0, y: 0 },
-            rotation: { x: 0, y: 0 } 
+            rotation: { x: 0, y: 0 },
+            loadingProgress: 0,
+            isFullyLoaded: false
         };
 
         let scene, camera, renderer, composer;
@@ -192,23 +225,57 @@
         let mouse = { x: 0, y: 0 };
 
         async function init() {
+            updateProgress(0, "Initializing Three.js...");
             initThree();
-            setupEnvironment(); 
+
+            updateProgress(10, "Setting up environment...");
+            setupEnvironment();
+
+            updateProgress(20, "Configuring lights...");
             setupLights();
+
+            updateProgress(30, "Creating textures...");
             createTextures();
+
+            updateProgress(40, "Creating initial particles...");
             createParticles();
+
+            updateProgress(50, "Adding dust effects...");
             createDust();
+
+            updateProgress(60, "Creating snowfall...");
             createSnow();
+
+            updateProgress(70, "Preparing default photos...");
             createDefaultPhotos();
+
+            updateProgress(80, "Setting up post-processing...");
             setupPostProcessing();
+
+            updateProgress(90, "Configuring events...");
             setupEvents();
-            await initMediaPipe();
-            
-            const loader = document.getElementById('loader');
-            loader.style.opacity = 0;
-            setTimeout(() => loader.remove(), 800);
+
+            updateProgress(95, "Loading hand recognition...");
+            // Delay MediaPipe loading to improve initial load time
+            setTimeout(async () => {
+                await initMediaPipe();
+                updateProgress(100, "Ready!");
+                setTimeout(() => {
+                    const loader = document.getElementById('loader');
+                    loader.style.opacity = 0;
+                    setTimeout(() => loader.remove(), 800);
+                }, 500);
+            }, 1000);
 
             animate();
+        }
+
+        function updateProgress(percent, text) {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+
+            if (progressBar) progressBar.style.width = percent + '%';
+            if (progressText) progressText.textContent = text;
         }
 
         function initThree() {
@@ -389,8 +456,8 @@
 
         // --- CREATION ---
         function createParticles() {
-            const sphereGeo = new THREE.SphereGeometry(0.5, 32, 32); 
-            const boxGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55); 
+            const sphereGeo = new THREE.SphereGeometry(0.5, 32, 32);
+            const boxGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55);
             const curve = new THREE.CatmullRomCurve3([
                 new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(0, 0.3, 0),
                 new THREE.Vector3(0.1, 0.5, 0), new THREE.Vector3(0.3, 0.4, 0)
@@ -400,8 +467,8 @@
             const goldMat = new THREE.MeshStandardMaterial({
                 color: CONFIG.colors.champagneGold,
                 metalness: 1.0, roughness: 0.1,
-                envMapIntensity: 2.0, 
-                emissive: 0x443300,   
+                envMapIntensity: 2.0,
+                emissive: 0x443300,
                 emissiveIntensity: 0.3
             });
 
@@ -409,7 +476,7 @@
                 color: CONFIG.colors.deepGreen,
                 metalness: 0.2, roughness: 0.8,
                 emissive: 0x002200,
-                emissiveIntensity: 0.2 
+                emissiveIntensity: 0.2
             });
 
             const redMat = new THREE.MeshPhysicalMaterial({
@@ -417,13 +484,14 @@
                 metalness: 0.3, roughness: 0.2, clearcoat: 1.0,
                 emissive: 0x330000
             });
-            
+
             const candyMat = new THREE.MeshStandardMaterial({ map: caneTexture, roughness: 0.4 });
 
-            for (let i = 0; i < CONFIG.particles.count; i++) {
+            // 使用初始粒子数量而不是总数量
+            for (let i = 0; i < CONFIG.particles.initialCount; i++) {
                 const rand = Math.random();
                 let mesh, type;
-                
+
                 if (rand < 0.40) {
                     mesh = new THREE.Mesh(boxGeo, greenMat);
                     type = 'BOX';
@@ -444,7 +512,7 @@
                 const s = 0.4 + Math.random() * 0.5;
                 mesh.scale.set(s,s,s);
                 mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
-                
+
                 mainGroup.add(mesh);
                 particleSystem.push(new Particle(mesh, type, false));
             }
@@ -457,8 +525,89 @@
             const star = new THREE.Mesh(starGeo, starMat);
             star.position.set(0, CONFIG.particles.treeHeight/2 + 1.2, 0);
             mainGroup.add(star);
-            
+
             mainGroup.add(photoMeshGroup);
+
+            // 渐进式加载剩余粒子
+            if (CONFIG.performance.enableProgressive && CONFIG.particles.initialCount < CONFIG.particles.maxCount) {
+                setTimeout(() => addMoreParticles(), CONFIG.performance.incrementInterval);
+            }
+        }
+
+        function addMoreParticles() {
+            if (particleSystem.length >= CONFIG.particles.maxCount) {
+                STATE.isFullyLoaded = true;
+                return;
+            }
+
+            const sphereGeo = new THREE.SphereGeometry(0.5, 32, 32);
+            const boxGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55);
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(0, 0.3, 0),
+                new THREE.Vector3(0.1, 0.5, 0), new THREE.Vector3(0.3, 0.4, 0)
+            ]);
+            const candyGeo = new THREE.TubeGeometry(curve, 16, 0.08, 8, false);
+
+            const goldMat = new THREE.MeshStandardMaterial({
+                color: CONFIG.colors.champagneGold,
+                metalness: 1.0, roughness: 0.1,
+                envMapIntensity: 2.0,
+                emissive: 0x443300,
+                emissiveIntensity: 0.3
+            });
+
+            const greenMat = new THREE.MeshStandardMaterial({
+                color: CONFIG.colors.deepGreen,
+                metalness: 0.2, roughness: 0.8,
+                emissive: 0x002200,
+                emissiveIntensity: 0.2
+            });
+
+            const redMat = new THREE.MeshPhysicalMaterial({
+                color: CONFIG.colors.accentRed,
+                metalness: 0.3, roughness: 0.2, clearcoat: 1.0,
+                emissive: 0x330000
+            });
+
+            const candyMat = new THREE.MeshStandardMaterial({ map: caneTexture, roughness: 0.4 });
+
+            const particlesToAdd = Math.min(CONFIG.performance.particleIncrement, CONFIG.particles.maxCount - particleSystem.length);
+
+            for (let i = 0; i < particlesToAdd; i++) {
+                const rand = Math.random();
+                let mesh, type;
+
+                if (rand < 0.40) {
+                    mesh = new THREE.Mesh(boxGeo, greenMat);
+                    type = 'BOX';
+                } else if (rand < 0.70) {
+                    mesh = new THREE.Mesh(boxGeo, goldMat);
+                    type = 'GOLD_BOX';
+                } else if (rand < 0.92) {
+                    mesh = new THREE.Mesh(sphereGeo, goldMat);
+                    type = 'GOLD_SPHERE';
+                } else if (rand < 0.97) {
+                    mesh = new THREE.Mesh(sphereGeo, redMat);
+                    type = 'RED';
+                } else {
+                    mesh = new THREE.Mesh(candyGeo, candyMat);
+                    type = 'CANE';
+                }
+
+                const s = 0.4 + Math.random() * 0.5;
+                mesh.scale.set(s,s,s);
+                mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
+
+                mainGroup.add(mesh);
+                particleSystem.push(new Particle(mesh, type, false));
+            }
+
+            // 继续渐进式加载
+            if (particleSystem.length < CONFIG.particles.maxCount) {
+                setTimeout(() => addMoreParticles(), CONFIG.performance.incrementInterval);
+            } else {
+                STATE.isFullyLoaded = true;
+            }
         }
 
         function createDust() {
