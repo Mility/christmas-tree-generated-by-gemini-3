@@ -258,7 +258,11 @@
             updateProgress(95, "Loading hand recognition...");
             // Delay MediaPipe loading to improve initial load time
             setTimeout(async () => {
-                await initMediaPipe();
+                try {
+                    await initMediaPipe();
+                } catch (error) {
+                    console.warn('Hand recognition failed (likely camera permission denied):', error);
+                }
                 updateProgress(100, "Ready!");
                 setTimeout(() => {
                     const loader = document.getElementById('loader');
