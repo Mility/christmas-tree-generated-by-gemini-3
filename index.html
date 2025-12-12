@@ -130,10 +130,51 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-                "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm"
+                "three": "https://fastly.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://fastly.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "@mediapipe/tasks-vision": "https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm"
             }
+        }
+    </script>
+
+    <!-- Service Worker for caching MediaPipe files -->
+    <script>
+        // 注册Service Worker用于缓存MediaPipe文件
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(function(registration) {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch(function(err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+
+        // 预加载MediaPipe文件（在用户可能需要时）
+        let mediapipePreloaded = false;
+        function preloadMediaPipe() {
+            if (mediapipePreloaded) return;
+
+            console.log('开始预加载MediaPipe文件...');
+            // 预加载WASM文件
+            fetch('./wasm/vision_wasm_internal.wasm', { priority: 'low' })
+                .then(() => console.log('WASM文件预加载完成'))
+                .catch(err => console.warn('WASM预加载失败:', err));
+
+            fetch('./wasm/hand_landmarker.task', { priority: 'low' })
+                .then(() => console.log('模型文件预加载完成'))
+                .catch(err => console.warn('模型预加载失败:', err));
+
+            mediapipePreloaded = true;
+        }
+
+        // 在页面空闲时预加载
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(preloadMediaPipe, { timeout: 5000 });
+        } else {
+            setTimeout(preloadMediaPipe, 3000);
         }
     </script>
 </head>
@@ -165,6 +206,9 @@
                 <input type="file" id="file-input" multiple accept="image/*">
             </label>
             <div class="hint-text">H:Hide | 1:Tree | 2:Scatter | 3:Focus | 4:Magic | Space:Fireworks | G:GravityWell | E:Ripple | R:Rainbow | Click:Toggle | Mouse:Control</div>
+            <button id="enable-hand-btn" class="upload-btn" style="margin-top: 10px; background: rgba(0, 100, 0, 0.6);">
+                启用手势控制
+            </button>
         </div>
     </div>
 
@@ -289,30 +333,12 @@
             updateProgress(90, "Configuring events...");
             setupEvents();
 
-            updateProgress(95, "Loading hand recognition...");
-            // Delay MediaPipe loading to improve initial load time
-            // Only load MediaPipe if user has previously granted camera permission or on user interaction
-            setTimeout(async () => {
-                try {
-                    // Check if we should attempt MediaPipe loading
-                    const shouldLoadMediaPipe = localStorage.getItem('cameraPermissionGranted') === 'true' ||
-                                               document.visibilityState === 'visible';
-
-                    if (shouldLoadMediaPipe) {
-                        await initMediaPipe();
-                    } else {
-                        console.log('Skipping MediaPipe loading - will load on user interaction');
-                    }
-                } catch (error) {
-                    console.warn('Hand recognition failed (likely camera permission denied):', error);
-                }
-                updateProgress(100, "Ready!");
-                setTimeout(() => {
-                    const loader = document.getElementById('loader');
-                    loader.style.opacity = 0;
-                    setTimeout(() => loader.remove(), 800);
-                }, 500);
-            }, 1000);
+            updateProgress(100, "Ready!");
+            setTimeout(() => {
+                const loader = document.getElementById('loader');
+                loader.style.opacity = 0;
+                setTimeout(() => loader.remove(), 800);
+            }, 500);
 
             animate();
         }
@@ -1467,6 +1493,25 @@
             });
 
             document.getElementById('file-input').addEventListener('change', handleImageUpload);
+
+            // 启用手势控制按钮
+            document.getElementById('enable-hand-btn').addEventListener('click', async () => {
+                const btn = document.getElementById('enable-hand-btn');
+                btn.textContent = '加载中...';
+                btn.disabled = true;
+
+                try {
+                    await initMediaPipe();
+                    btn.textContent = '手势控制已启用 ✓';
+                    btn.style.background = 'rgba(0, 150, 0, 0.8)';
+                    localStorage.setItem('cameraPermissionGranted', 'true');
+                } catch (error) {
+                    console.warn('手势控制启用失败:', error);
+                    btn.textContent = '启用失败，重试';
+                    btn.disabled = false;
+                    btn.style.background = 'rgba(150, 0, 0, 0.8)';
+                }
+            });
 
             // Mouse interaction for camera control
             document.addEventListener('mousemove', (event) => {
