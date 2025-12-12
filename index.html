@@ -138,6 +138,12 @@
 </head>
 <body>
 
+    <!-- 圣诞背景音乐 -->
+    <audio id="bg-music" autoplay loop>
+        <source src="christmas-443109.mp3" type="audio/mpeg">
+        您的浏览器不支持音频元素。
+    </audio>
+
     <div id="loader">
         <div class="loader-text">Loading Holiday Magic</div>
         <div class="progress-container">
@@ -243,6 +249,8 @@
         let fireworks = [];
         let particleConnections = [];
 
+
+
         async function init() {
             // 检查WebGL支持 - 不阻止继续运行，提供降级体验
             if (!checkWebGLSupport()) {
@@ -282,9 +290,18 @@
 
             updateProgress(95, "Loading hand recognition...");
             // Delay MediaPipe loading to improve initial load time
+            // Only load MediaPipe if user has previously granted camera permission or on user interaction
             setTimeout(async () => {
                 try {
-                    await initMediaPipe();
+                    // Check if we should attempt MediaPipe loading
+                    const shouldLoadMediaPipe = localStorage.getItem('cameraPermissionGranted') === 'true' ||
+                                               document.visibilityState === 'visible';
+
+                    if (shouldLoadMediaPipe) {
+                        await initMediaPipe();
+                    } else {
+                        console.log('Skipping MediaPipe loading - will load on user interaction');
+                    }
                 } catch (error) {
                     console.warn('Hand recognition failed (likely camera permission denied):', error);
                 }
@@ -786,6 +803,54 @@
 
                 scene.add(snow);
                 snowSystem.push(snow);
+            }
+        }
+
+        function createSnowRing() {
+            // 创建圣诞树外围的雪花环绕特效
+            const snowRingCount = 80; // 雪花数量
+            const ringRadius = CONFIG.particles.treeRadius + 3; // 环绕半径
+            const ringHeight = CONFIG.particles.treeHeight; // 环绕高度
+
+            const snowGeo = new THREE.PlaneGeometry(0.08, 0.08);
+            const snowMat = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.9,
+                side: THREE.DoubleSide,
+                emissive: 0x444444,
+                emissiveIntensity: 0.2
+            });
+
+            for(let i = 0; i < snowRingCount; i++) {
+                const snow = new THREE.Mesh(snowGeo, snowMat);
+
+                // 螺旋分布在树外围
+                const angle = (i / snowRingCount) * Math.PI * 4; // 4圈螺旋
+                const height = (i / snowRingCount) * ringHeight - ringHeight / 2;
+                const radius = ringRadius + Math.sin(angle * 2) * 0.5; // 轻微波动
+
+                snow.position.set(
+                    Math.cos(angle) * radius,
+                    height,
+                    Math.sin(angle) * radius
+                );
+
+                // 随机旋转
+                snow.rotation.z = Math.random() * Math.PI * 2;
+
+                // 自定义属性用于动画
+                snow.userData = {
+                    baseAngle: angle,
+                    baseRadius: radius,
+                    baseHeight: height,
+                    rotationSpeed: 0.5 + Math.random() * 0.5, // 旋转速度
+                    verticalSpeed: 0.2 + Math.random() * 0.3, // 上下浮动速度
+                    amplitude: 0.3 + Math.random() * 0.4 // 浮动幅度
+                };
+
+                mainGroup.add(snow); // 添加到mainGroup以跟随树旋转
+                snowRingSystem.push(snow);
             }
         }
 
@@ -1294,6 +1359,21 @@
             console.log('资源清理完成');
         }
 
+        // --- AUDIO CONTROL ---
+        let musicStarted = false;
+
+        function startMusic() {
+            if (!musicStarted) {
+                const bgMusic = document.getElementById('bg-music');
+                if (bgMusic) {
+                    bgMusic.play().catch(error => {
+                        console.warn('音频播放失败:', error);
+                    });
+                    musicStarted = true;
+                }
+            }
+        }
+
         // --- MEDIAPIPE ---
         async function initMediaPipe() {
             video = document.getElementById('webcam');
@@ -1301,12 +1381,10 @@
             webcamCtx = webcamCanvas.getContext('2d');
             webcamCanvas.width = 160; webcamCanvas.height = 120;
 
-            const vision = await FilesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-            );
+            const vision = await FilesetResolver.forVisionTasks("./wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, {
                 baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                    modelAssetPath: `./wasm/hand_landmarker.task`,
                     delegate: "GPU"
                 },
                 runningMode: "VIDEO",
@@ -1405,6 +1483,7 @@
 
             // Click to change modes
             document.addEventListener('click', () => {
+                startMusic(); // 启动音乐
                 if (STATE.mode === 'TREE') {
                     STATE.mode = 'SCATTER';
                 } else if (STATE.mode === 'SCATTER') {
@@ -1414,6 +1493,7 @@
 
             // Keyboard controls
             window.addEventListener('keydown', (e) => {
+                startMusic(); // 启动音乐
                 if (e.key.toLowerCase() === 'h') {
                     const controls = document.querySelector('.upload-wrapper');
                     if (controls) controls.classList.toggle('ui-hidden');
@@ -1501,6 +1581,8 @@
                     snow.userData.drift = (Math.random() - 0.5) * 0.5;
                 }
             });
+
+
 
             // Update magic effects
             if (STATE.magicMode) {
