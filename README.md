@@ -68,8 +68,55 @@ Gemini3 生成的基于手势控制3D粒子圣诞树（原作者）
 
 
 ## 在线部署
-1. 打开Settings->Pages -> Source,选择Github Actions 
-2. 点击https://mility.github.io/christmas-tree-generated-by-gemini-3/   访问
+
+### 标准部署 (GitHub Pages)
+1. 打开 Settings -> Pages -> Source，选择 Github Actions
+2. 访问 https://mility.github.io/christmas-tree-generated-by-gemini-3/
+
+### 🚀 国内优化部署方案
+
+由于国内网络环境限制，GitHub Pages 在中国大陆访问较慢。以下是优化建议：
+
+#### 方案一：使用国内CDN加速 (推荐)
+本项目已优化为使用 jsDelivr CDN，自动为中国用户提供加速：
+- Three.js、MediaPipe 等库使用 jsDelivr CDN
+- Service Worker 实现智能缓存
+- 渐进式加载和性能监控
+
+#### 方案二：部署到国内平台
+推荐将项目部署到以下国内平台获得更好体验：
+
+1. **Vercel + 腾讯云 CDN**
+   - 注册 Vercel 账号
+   - 连接 GitHub 仓库
+   - 自动部署并获得全球CDN加速
+
+2. **Netlify + 阿里云 CDN**
+   - 类似 Vercel，国内访问更稳定
+
+3. **GitHub + Gitee 镜像**
+   - 在 Gitee (码云) 创建仓库镜像
+   - 使用 Gitee Pages 部署：`https://用户名.gitee.io/仓库名`
+   - 国内访问速度显著提升
+
+4. **腾讯云静态网站**
+   - 上传文件到腾讯云对象存储 COS
+   - 开启 CDN 加速
+   - 绑定自定义域名
+
+#### 性能优化特性
+- ✅ 使用中国CDN (jsDelivr)
+- ✅ Service Worker 多层缓存
+- ✅ 渐进式资源加载
+- ✅ 自适应质量调节
+- ✅ 网络状态检测
+- ✅ 性能监控和内存管理
+- ✅ 懒加载 MediaPipe (手势控制)
+
+#### 网络优化建议
+- 在弱网络环境下，建议先加载基础圣诞树，稍后启用手势控制
+- 应用会自动检测网络状况并调整加载策略
+- 支持离线访问（缓存的静态资源）
 ---
 <img width="1458" height="1334" alt="image" src="https://github.com/user-attachments/assets/71b6aa87-a54f-4441-8c9c-6bb52afe1556" />
 
